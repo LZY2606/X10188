@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>包链显微镜</title>
+<style>
+:root{
+  --bg:#0f1420; --panel:#161d2e; --panel2:#1d263b; --line:#2b3652;
+  --txt:#e6ebf5; --mut:#8b97b0; --acc:#5aa7ff; --ok:#3ecf8e; --warn:#f5b452;
+  --err:#ff6b6b; --susp:#c792ea; --block:#7dd3fc;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+header{padding:10px 16px;background:linear-gradient(90deg,#18233b,#101725);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{font-size:17px;margin:0;letter-spacing:2px}
+.sub{color:var(--mut);font-size:12px}
+.tabs{display:flex;gap:4px}
+.tabs button{background:var(--panel2);color:var(--mut);border:1px solid var(--line);padding:4px 10px;border-radius:6px;cursor:pointer}
+.tabs button.active{color:var(--txt);border-color:var(--acc)}
+main{padding:12px 16px;display:grid;grid-template-columns:340px 1fr 420px;gap:12px;align-items:start}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.card h2{font-size:13px;margin:0 0 8px;color:var(--acc)}
+.row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+.muted{color:var(--mut)}
+button.act{background:var(--acc);color:#08111f;border:0;border-radius:6px;padding:5px 12px;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+button.danger{background:var(--err);color:#210b0b;border:0;border-radius:6px;padding:4px 10px;cursor:pointer}
+input[type=number],input[type=text],select{background:#0d1322;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:4px 8px;width:110px}
+.drop{border:1.5px dashed #3b4a6e;border-radius:10px;padding:18px;text-align:center;color:var(--mut);cursor:pointer}
+.drop.over{border-color:var(--acc);color:var(--txt);background:#17233c}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #232e47;vertical-align:top}
+th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--panel)}
+.scroll{max-height:260px;overflow:auto}
+.pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.s-resolved{background:#10382a;color:var(--ok)}
+.s-error{background:#3d171c;color:var(--err)}
+.s-blocked{background:#0f2c3a;color:var(--block)}
+.s-suspended{background:#2c1d3d;color:var(--susp)}
+.s-new{background:#2a3040;color:#c4ccdd}
+.code{font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+.small{font-size:11px}
+pre{background:#0c1220;border:1px solid var(--line);border-radius:8px;padding:8px;max-height:240px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:6px 0}
+.badge{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.legend span{margin-right:10px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:3px}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--panel2);border:1px solid var(--line);padding:10px 14px;border-radius:8px;max-width:380px;display:none}
+#dag{width:100%;height:300px;background:#0c1220;border:1px solid var(--line);border-radius:8px}
+.flex{display:flex;gap:8px}.flex>*{flex:1}
+details summary{cursor:pointer;color:var(--mut)}
+.iss-err{color:var(--err)}.iss-warn{color:var(--warn)}.iss-fatal{color:#ff9a9a}
+.ocand{border:1px solid var(--line);border-radius:8px;padding:6px;margin:5px 0;cursor:pointer}
+.ocand.pinned{border-color:var(--acc);background:#14233c}
+.depbox{background:#24141c;border:1px solid #54293a;border-radius:8px;padding:8px;margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>包链显微镜</h1>
+  <span class="sub">Git pack / idx / loose 对象取证 · 自研解析（无系统 git 依赖）</span>
+  <div class="tabs" id="branchTabs"></div>
+  <button class="ghost" id="newBranchBtn">+ 分析分支</button>
+  <span class="flex" style="flex:1"></span>
+  <button class="ghost" id="rerunBtn">重新解析全部</button>
+</header>
+<main>
+<div id="colLeft">
+  <div class="card">
+    <h2>① 导入文件（pack / idx / loose）</h2>
+    <div class="drop" id="drop">
+      拖拽文件到此处，或点击选择<br><span class="small muted">原始字节保存于项目数据目录；导入顺序不影响候选排序</span>
+      <input type="file" id="file" multiple hidden>
+    </div>
+    <div id="importMsg" class="small muted"></div>
+  </div>
+  <div class="card">
+    <h2>② 资源预算</h2>
+    <div class="row">delta 深度 <input type="number" id="bDepth" min="1"></div>
+    <div class="row">总展开字节 <input type="number" id="bTotal" min="1" style="width:150px"></div>
+    <div class="row">单对象比例 <input type="number" id="bRatio" min="0.01" max="1" step="0.05"></div>
+    <div class="row muted small">已用 <span id="bUsed">0</span> / <span id="bTotalShow"></span></div>
+    <div class="row">
+      <button class="act" id="applyBudget">应用并重试暂停对象</button>
+    </div>
+    <div class="small muted">达到预算时保存为“可重试中间状态”，绝不把部分输出当作完整对象。</div>
+  </div>
+  <div class="card">
+    <h2>③ 已导入源文件</h2>
+    <div class="scroll"><table><thead><tr><th>#</th><th>类型</th><th>文件</th><th></th></tr></thead>
+    <tbody id="srcBody"></tbody></table></div>
+  </div>
+  <div class="card">
+    <h2>④ 错误与证据</h2>
+    <div class="scroll" id="issues"></div>
+  </div>
+</div>
+<div id="colMid">
+  <div class="card">
+    <h2>⑤ Pack 布局（header / 对象原始偏移 / zlib 边界 / 尾部校验）</h2>
+    <div id="packLayout" class="scroll"></div>
+  </div>
+  <div class="card">
+    <h2>⑥ Index fanout 与 CRC32</h2>
+    <div id="idxView" class="scroll"></div>
+  </div>
+  <div class="card">
+    <h2>⑦ Delta DAG</h2>
+    <div class="legend small muted">
+      <span><i style="background:var(--ok)"></i>resolved</span>
+      <span><i style="background:var(--block)"></i>blocked</span>
+      <span><i style="background:var(--err)"></i>error</span>
+      <span><i style="background:var(--susp)"></i>suspended</span>
+    </div>
+    <svg id="dag"></svg>
+  </div>
+</div>
+<div id="colRight">
+  <div class="card">
+    <h2>⑧ 对象（%REPLACE_COUNT%）与内容预览</h2>
+    <div class="row">
+      <input type="text" id="filter" placeholder="过滤 oid / 类型 / 状态" style="width:200px">
+      <select id="statusFilter"><option value="">全部状态</option>
+        <option>resolved</option><option>blocked</option><option>error</option><option>suspended</option></select>
+    </div>
+    <div class="scroll" style="max-height:560px"><table><thead><tr><th>状态</th><th>类型</th><th>oid / 候选</th></tr></thead>
+    <tbody id="objBody"></tbody></table></div>
+  </div>
+  <div class="card" id="detailCard" style="display:none">
+    <h2>对象详情 / delta 逐步还原</h2>
+    <div id="detail"></div>
+  </div>
+</div>
+</main>
+<div class="toast" id="toast"></div>
+<script>
