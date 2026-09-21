@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>包链显微镜</title>
+<style>
+:root { color-scheme: dark; }
+body { margin:0; font: 14px/1.5 -apple-system, "PingFang SC", system-ui, sans-serif;
+       background:#0e1116; color:#d7dde5; }
+header { padding:12px 18px; background:#161b22; border-bottom:1px solid #2a2f38;
+         display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+h1 { font-size:18px; margin:0; }
+select, button, input { background:#0e1116; color:#d7dde5; border:1px solid #30363d;
+       border-radius:6px; padding:5px 9px; font-size:13px; }
+button { cursor:pointer; }
+button:hover { border-color:#58a6ff; }
+main { display:grid; grid-template-columns: 320px 1fr 420px; gap:12px; padding:12px; }
+.panel { background:#161b22; border:1px solid #2a2f38; border-radius:8px; padding:10px;
+         max-height: calc(100vh - 110px); overflow:auto; }
+h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; margin:0 0 8px; }
+.row { display:flex; justify-content:space-between; gap:8px; padding:3px 6px; border-radius:5px;
+       cursor:pointer; font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+.row:hover { background:#1f2630; }
+.row.sel { background:#21304a; }
+.ok { color:#3fb950; } .bad { color:#f85149; } .pause { color:#d29922; } .block { color:#f0883e; }
+.muted { color:#8b949e; }
+table { border-collapse:collapse; width:100%; font-size:12px; }
+td, th { border-bottom:1px solid #232932; padding:3px 6px; text-align:left; vertical-align:top; }
+th { color:#8b949e; font-weight:500; }
+pre { white-space:pre-wrap; word-break:break-all; background:#0b0e13; border:1px solid #232932;
+      border-radius:6px; padding:8px; max-height:260px; overflow:auto; }
+.pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px;
+        background:#21262d; border:1px solid #30363d; }
+.tabs button { margin-right:6px; }
+svg { background:#0b0e13; border-radius:6px; border:1px solid #232932; }
+.edge { stroke:#444c56; stroke-width:1.2; fill:none; marker-end:url(#arrow); }
+.edge.delta { stroke:#58a6ff; }
+.edge.ofs { stroke:#3fb950; }
+.node rect { stroke-width:1.2; cursor:pointer; }
+.node text { fill:#d7dde5; font:10px ui-monospace,Menlo,monospace; pointer-events:none; }
+.ev-error { color:#f85149; } .ev-warning { color:#d29922; } .ev-info { color:#8b949e; }
+.small { font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>包链显微镜</h1>
+  <label class="muted">分支
+    <select id="branch"></select>
+  </label>
+  <button id="newBranch">新建分析分支</button>
+  <input id="files" type="file" multiple />
+  <button id="upload">导入文件</button>
+  <button id="resume">恢复（追加预算）</button>
+  <button id="rerun">全部重算</button>
+  <span id="budget" class="small muted"></span>
+  <span id="msg" class="small"></span>
+</header>
+<main>
+  <section class="panel" id="left">
+    <h2>源文件</h2>
+    <div id="sources"></div>
+    <h2 style="margin-top:14px">对象</h2>
+    <div id="objects"></div>
+  </section>
+  <section class="panel">
+    <div class="tabs">
+      <button data-tab="dag" class="tab">Delta DAG</button>
+      <button data-tab="layout" class="tab">Pack 布局</button>
+      <button data-tab="evidence" class="tab">错误证据</button>
+    </div>
+    <div id="tab-dag"><svg id="dag" width="100%" height="560"></svg></div>
+    <div id="tab-layout" hidden></div>
+    <div id="tab-evidence" hidden></div>
+  </section>
+  <section class="panel" id="detail">
+    <h2>对象详情</h2>
+    <div id="detailBody" class="muted">选择一个对象查看还原细节与内容预览。</div>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text().catch(() => r.statusText));
+  return r.json();
+};
+let branch = 'default';
+let selectedOid = null;
+let currentTab = 'dag';
+
+function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function short(o){ return o && o.length > 14 ? o.slice(0,10)+'…'+o.slice(-6) : (o || ''); }
+function statusClass(st){ return ({complete:'ok',bad:'bad',paused:'pause',blocked:'block'})[st] || 'muted'; }
+function statusLabel(st){ return ({complete:'完整',bad:'坏对象',paused:'暂停',blocked:'阻塞'})[st] || st; }
+
+async function refreshState(){
+  const st = await api(`/api/state?branch=${encodeURIComponent(branch)}`);
+  $('#budget').textContent =
+    `预算 ${st.budget.bytes_used}/${st.budget.byte_budget} 字节 · 深度 ${st.budget.depth_used}/${st.budget.depth_limit} · 单对象 ${st.budget.ratio_limit_mib}MiB` +
+    (st.budget.paused ? ` · ⏸ ${st.budget.last_pause||''}` : '');
+  const sel = $('#branch');
+  const cur = sel.value || st.branch;
+  sel.innerHTML = st.branches.map(b => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join('');
+  sel.value = cur; branch = cur;
+  await Promise.all([refreshSources(), refreshObjects()]);
+  if (currentTab === 'dag') refreshDAG();
+  if (currentTab === 'evidence') refreshEvidence();
+  if (currentTab === 'layout') { const sid = window.__packSid; if (sid) refreshLayout(sid); }
+  if (selectedOid) refreshDetail(selectedOid);
+}
+
+async function refreshSources(){
+  const s = await api('/api/sources');
+  window.__evidence = s.evidence;
+  $('#sources').innerHTML = s.sources.map(x => `
+    <div class="row" data-sid="${x.id}">
+      <span>
+        <span class="pill">${esc(x.kind)}</span>
+        ${esc(x.file_name)}
+        ${x.parse_fatal ? '<span class="bad">解析失败</span>' : ''}
+      </span>
+      <span class="muted">${x.size}B</span>
+    </div>`).join('') || '<div class="muted small">尚未导入</div>';
+  document.querySelectorAll('#sources .row[data-sid]').forEach(el => {
+    el.onclick = () => { currentTab='layout'; switchTab(); refreshLayout(Number(el.dataset.sid)); };
+    el.oncontextmenu = async (ev) => { ev.preventDefault(); await checkDelete(Number(el.dataset.sid)); };
+  });
+}
+
+async function refreshObjects(){
+  const s = await api(`/api/objects?branch=${encodeURIComponent(branch)}`);
+  $('#objects').innerHTML = s.objects.map(o => `
+    <div class="row ${selectedOid===o.oid?'sel':''}" data-oid="${esc(o.oid)}">
+      <span class="${statusClass(o.status)}">●</span>
+      <span title="${esc(o.oid)}">${short(o.oid)}</span>
+      <span class="muted">${esc(o.type||'')}</span>
+      <span class="${statusClass(o.status)}">${statusLabel(o.status)}</span>
+    </div>`).join('') || '<div class="muted small">无对象</div>';
+  document.querySelectorAll('#objects .row[data-oid]').forEach(el => {
+    el.onclick = () => { selectedOid = el.dataset.oid; refreshObjects(); refreshDetail(selectedOid); };
+  });
+}
+
+async function refreshDetail(oid){
+  const d = await api(`/api/object/${encodeURIComponent(oid)}?branch=${encodeURIComponent(branch)}`);
+  const cands = d.candidates.map(c => `
+    <tr>
+      <td>#${c.candidate_id} ${c.pinned?'<span class="pill">固定</span>':''}</td>
+      <td>${esc(c.origin)} / ${esc(c.file_name)}${c.header_offset!=null?(' @'+c.header_offset):''}</td>
+      <td>${esc(c.type)} ${c.inflated_size??''}B</td>
+      <td>${c.bad?('<span class="bad">'+esc(c.bad_reason||'坏')+'</span>'):'<span class="ok">可用</span>'}</td>
+      <td>
+        <button onclick="pin(${c.candidate_id})">固定此来源</button>
+      </td>
+    </tr>`).join('');
+  const steps = d.delta_steps.map(s => `
+    <tr>
+      <td>${s.step+1}</td>
+      <td title="${esc(s.base_oid)}">${short(s.base_oid)}</td>
+      <td>#${s.candidate_id}</td>
+      <td>${s.in_size} → ${s.out_size}</td>
+      <td>声明 ${s.declared_base_size} → ${s.declared_target_size}</td>
+      <td>${s.instr_count} 条指令 [${s.instr_range[0]}..${s.instr_range[1]})</td>
+      <td class="${s.check_ok?'ok':'bad'}">${s.check_ok?'校验通过':'校验失败'}</td>
+    </tr>`).join('');
+  const blockers = d.blockers.map(b => `
+    <tr><td>${b.code}</td><td class="${'ev-'+b.level}">${esc(b.message)}</td>
+        <td>${b.candidate_id?('#'+b.candidate_id):''}</td></tr>`).join('');
+  const chain = d.blockers.find(b => b.chain && b.chain.length);
+  const chainHtml = chain ? `<pre>${esc(JSON.stringify(chain.chain,null,2))}</pre>` : '';
+  const prev = d.preview
+    ? (d.preview.kind==='text'
+        ? `<pre>${esc(d.preview.text)}</pre>`
+        : `<pre class="small">(二进制 ${d.preview.total_size} 字节，前 256 字节)
+${esc(d.preview.hex.slice(0,512))}</pre>`)
+    : '<div class="muted small">无内容预览</div>';
+  $('#detailBody').innerHTML = `
+    <div>对象 <b>${esc(d.oid)}</b>
+      <span class="pill ${statusClass(d.status)}">${statusLabel(d.status||'')}</span>
+      ${d.obj_type?`<span class="pill">${esc(d.obj_type)}</span>`:''}
+      ${d.final_size!=null?`<span class="muted small">${d.final_size} B</span>`:''}
+      ${d.check_ok===true?'<span class="ok small">git object id 重新计算一致</span>':(d.check_ok===false?'<span class="bad small">object id 不一致</span>':'')}
+    </div>
+    ${d.failure?`<p class="${d.status==='paused'?'pause':'bad'}">${esc(d.failure)}</p>`:''}
+    <h2>候选来源（同一 oid 的多个来源）</h2>
+    <table><tr><th></th><th>来源</th><th>类型/大小</th><th>健康</th><th></th></tr>${cands}</table>
+    ${steps?`<h2 style="margin-top:12px">Delta 还原步骤</h2>
+      <table><tr><th>#</th><th>base</th><th>delta候选</th><th>输入→输出</th><th>声明大小</th><th>指令范围</th><th>校验</th></tr>${steps}</table>`:''}
+    ${blockers?`<h2 style="margin-top:12px">错误与阻塞证据</h2>
+      <table><tr><th>代码</th><th>信息</th><th>候选</th></tr>${blockers}</table>
+      <h2>阻塞链</h2>${chainHtml}`:''}
+    <h2 style="margin-top:12px">内容预览</h2>${prev}
+    <details><summary class="muted small">Delta 指令明细</summary><pre>${esc(JSON.stringify(d.delta_steps.map(s=>s.instructions),null,2))}</pre></details>
+  `;
+  window.__detail = d;
+}
+window.pin = async (cid) => {
+  if (!selectedOid) return;
+  await api('/api/pin', {method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({branch, oid: selectedOid, candidate_id: cid})});
+  await refreshState();
+};
+
+async function refreshLayout(sid){
+  window.__packSid = sid;
+  const p = await api(`/api/pack/${sid}`);
+  const rows = p.entries.map(e => `
+    <tr>
+      <td>${e.ordinal}</td>
+      <td><span class="pill">${esc(e.type)}</span></td>
+      <td>${e.header_offset}…${e.end_offset}</td>
+      <td>zlib@${e.data_offset} ${e.inflated_size}/${e.declared_size}B</td>
+      <td>crc ${e.crc32}${e.idx_crc32?(' / idx '+e.idx_crc32):''}
+          ${e.idx_crc32 && e.idx_crc32!==e.crc32?'<span class="bad"> CRC不符</span>':''}</td>
+      <td>${e.ofs_distance?('ofs -'+e.ofs_distance+' → @'+e.base_header_offset):''}
+          ${e.ref_base?('ref '+short(e.ref_base)):''}</td>
+      <td>${e.oid?`<a href="#" onclick="selectOid('${e.oid}');return false">${short(e.oid)}</a>`:'<span class="muted">(未命名)</span>'}</td>
+      <td>${e.bad?('<span class="bad">'+esc(e.bad_reason||'坏')+'</span>'):'<span class="ok">OK</span>'}</td>
+    </tr>`).join('');
+  const ev = p.evidence.map(e => `<div class="ev-${esc(e.level)} small">${esc(e.level)} ${esc(e.code)}: ${esc(e.message)}${e.detail?(' <span class="muted">'+esc(String(e.detail).slice(0,120))+'</span>'):''}</div>`).join('');
+  $('#tab-layout').innerHTML = `
+    <h2>${esc(p.file_name)} (pack, ${p.size} 字节)</h2>
+    ${p.parse_fatal?`<p class="bad">${esc(p.parse_fatal)}</p>`:''}
+    <div>${ev}</div>
+    ${p.fanout?`<details><summary class="muted">index fanout (256)</summary><pre class="small">${esc(JSON.stringify(p.fanout))}</pre></details>`:''}
+    <table><tr><th>#</th><th>类型</th><th>原始偏移</th><th>zlib 边界 / 大小</th><th>CRC</th><th>delta 引用</th><th>oid</th><th>健康</th></tr>${rows}</table>`;
+}
+window.selectOid = (oid) => { selectedOid = oid; refreshObjects(); refreshDetail(oid); };
+
+async function refreshEvidence(){
+  const s = await api('/api/sources');
+  const b = await api(`/api/blockers?branch=${encodeURIComponent(branch)}`);
+  $('#tab-evidence').innerHTML =
+    '<h2>源级证据</h2>' + s.evidence.map(e =>
+      `<div class="ev-${esc(e.level)}"><span class="pill">#${e.source_id}</span> ${esc(e.code)}: ${esc(e.message)}
+       ${e.detail?`<pre class="small">${esc(String(e.detail).slice(0,2000))}</pre>`:''}</div>`).join('')
+    + '<h2 style="margin-top:12px">未还原对象的阻塞链</h2>'
+    + b.blockers.map(x => `<div>
+        <a href="#" onclick="selectOid('${esc(x.oid)}');return false">${esc(x.oid)}</a>
+        <span class="ev-${esc(x.level)}">${esc(x.code)}</span>: ${esc(x.message)}
+        ${x.chain?`<pre class="small">${esc(JSON.stringify(x.chain,null,2))}</pre>`:''}
+      </div>`).join('');
+}
+
+async function refreshDAG(){
+  const d = await api(`/api/dag?branch=${encodeURIComponent(branch)}`);
+  const svg = $('#dag');
+  const W = svg.clientWidth || 700, H = 560;
+  const ids = d.nodes.map(n=>n.oid);
+  const idx = new Map(ids.map((id,i)=>[id,i]));
+  const n = ids.length || 1;
+  const pos = new Map();
+  d.nodes.forEach((node, i) => {
+    const angle = (i / n) * Math.PI * 2 - Math.PI/2;
+    const rx = W*0.38, ry = H*0.38;
+    pos.set(node.oid, [W/2 + rx*Math.cos(angle), H/2 + ry*Math.sin(angle)]);
+  });
+  const color = {complete:'#3fb950', blocked:'#f0883e', paused:'#d29922', bad:'#f85149'};
+  let edges = '', nodes = '';
+  for (const e of d.edges) {
+    const a = pos.get(e.from), c = pos.get(e.to);
+    if (!a || !c) continue;
+    const cls = e.kind==='ofs-delta' ? 'edge ofs' : 'edge delta';
+    edges += `<path class="${cls}" d="M${a[0]},${a[1]} L${c[0]},${c[1]}"/>`;
+  }
+  for (const node of d.nodes) {
+    const [x,y] = pos.get(node.oid);
+    nodes += `<g class="node" transform="translate(${x-6},${y-10})" onclick="selectOid('${node.oid}')">
+      <rect width="12" height="12" rx="2" fill="${color[node.status]||'#8b949e'}" stroke="#0b0e13"/>
+      <text x="14" y="10">${short(node.oid)} ${esc(node.type)}</text></g>`;
+  }
+  svg.innerHTML = `<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3"
+      orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#58a6ff"/></marker></defs>${edges}${nodes}`;
+}
+
+function switchTab(){
+  for (const t of ['dag','layout','evidence']) {
+    $('#tab-'+t).hidden = (t !== currentTab);
+  }
+  document.querySelectorAll('.tab').forEach(b => b.style.fontWeight = b.dataset.tab===currentTab?'700':'400');
+}
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { currentTab = b.dataset.tab; switchTab(); });
+
+async function checkDelete(sid){
+  const r = await api(`/api/sources/${sid}/dependents`);
+  const list = r.affected.map(a => `<li>${esc(a.oid)} — ${a.branches.map(x=>x[0]+':'+x[1]).join(', ')}</li>`).join('');
+  if (!confirm(`删除源文件 #${sid} 前，以下对象仍依赖它：\n${r.affected.map(a=>a.oid).join('\n')||'(无)'} \n\n确定强制删除？`)) return;
+  const resp = await fetch(`/api/sources/${sid}`, {method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({force:true})});
+  if (!resp.ok) alert(await resp.text());
+  await refreshState();
+}
+
+$('#branch').onchange = async (e) => { branch = e.target.value; selectedOid=null; await refreshState(); };
+$('#newBranch').onclick = async () => {
+  const name = prompt('分支名称（固定冲突来源用的分析分支）');
+  if (!name) return;
+  await api('/api/branch', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({name})});
+  branch = name; await refreshState();
+};
+$('#upload').onclick = async () => {
+  const files = $('#files').files;
+  if (!files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f, f.name);
+  const r = await fetch('/api/import', {method:'POST', body: fd});
+  if (!r.ok) { alert(await r.text()); return; }
+  await refreshState();
+};
+$('#resume').onclick = async () => { await api('/api/resume', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({branch, add_bytes: 16*1024*1024, add_depth: 8, add_ratio_mib: 32})}); await refreshState(); };
+$('#rerun').onclick = async () => { await api('/api/rerun', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({branch})}); await refreshState(); };
+switchTab();
+refreshState().catch(e => $('#msg').innerHTML = '<span class="bad">'+esc(e.message)+'</span>');
+</script>
+
+</body>
+</html>
