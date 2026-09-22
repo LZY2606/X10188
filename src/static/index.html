@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>包链显微镜</title>
+<link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>包链显微镜</h1>
+  <div class="sub">Git pack / index / loose object 取证 · delta 链逐步还原</div>
+</header>
+
+<section class="toolbar">
+  <form id="upload-form">
+    <input type="file" id="files" name="files" multiple />
+    <button type="submit">导入文件</button>
+  </form>
+  <div class="branch-box">
+    <label>分析分支</label>
+    <select id="branch-select"></select>
+    <input id="new-branch" placeholder="新分支名" />
+    <button id="new-branch-btn">建分支</button>
+  </div>
+  <div class="budget-box">
+    <label>总预算 <input id="b-total" type="number" /></label>
+    <label>单对象比例 <input id="b-ratio" type="number" step="0.05" min="0" max="1" /></label>
+    <label>最大深度 <input id="b-depth" type="number" /></label>
+    <button id="save-budget">保存</button>
+    <button id="resume-btn" class="primary">恢复解析</button>
+  </div>
+</section>
+
+<div id="banner" class="banner hidden"></div>
+
+<main class="grid">
+  <section class="panel span2">
+    <div class="panel-h"><h2>Pack 布局</h2><span class="hint">原始偏移 / 类型 / 压缩边界 / CRC</span></div>
+    <div id="packs"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-h"><h2>对象与 delta DAG</h2><span class="hint">点击节点查看证据</span></div>
+    <div id="dag"></div>
+  </section>
+
+  <section class="panel span2">
+    <div class="panel-h"><h2>对象表</h2><span class="hint">导入顺序不影响候选排序</span></div>
+    <div class="table-wrap"><table id="nodes-table">
+      <thead><tr>
+        <th>节点</th><th>源</th><th>偏移</th><th>类型</th><th>状态</th><th>OID</th><th>深度</th><th>证据</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-h"><h2>对象详情</h2><span id="detail-title" class="hint"></span></div>
+    <div id="detail"><div class="empty">未选择对象</div></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
