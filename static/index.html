@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>包链显微镜</title>
+<style>
+:root{color-scheme:dark;--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--pause:#a371f7;--accent:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}
+header{padding:22px 28px;border-bottom:1px solid var(--line);background:linear-gradient(135deg,#101827,#0d1117)}h1{margin:0;font-size:26px}.sub{color:var(--muted)}
+main{padding:20px;display:grid;gap:16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;overflow:auto}
+h2{font-size:16px;margin:0 0 12px}input,button{border:1px solid var(--line);background:#0d1117;color:var(--text);border-radius:8px;padding:8px 10px}button{cursor:pointer;background:#1f6feb;border-color:#1f6feb}button.secondary{background:#21262d;border-color:var(--line)}
+table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}th{color:var(--muted);position:sticky;top:0;background:var(--panel)}
+.badge{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px}.resolved{background:rgba(63,185,80,.2);color:var(--ok)}.missing_base{background:rgba(210,153,34,.2);color:var(--warn)}.cycle,.invalid{background:rgba(248,81,73,.2);color:var(--bad)}.paused{background:rgba(163,113,247,.2);color:var(--pause)}
+svg{width:100%;height:340px;background:#0b0f14;border-radius:8px}.node{fill:#21262d;stroke:#58a6ff}.badnode{stroke:var(--bad)}.pausednode{stroke:var(--pause)}
+pre{white-space:pre-wrap;word-break:break-all;background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:280px;overflow:auto}.muted{color:var(--muted)}
+.dialog{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);place-items:center}.dialog.show{display:grid}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;max-width:760px;width:92%;max-height:86vh;overflow:auto;padding:18px}
+</style>
+</head>
+<body>
+<header><h1>包链显微镜</h1><div class="sub">Git pack / index / loose object 取证、delta DAG 还原与预算恢复</div></header>
+<main>
+<section>
+<form id="form" enctype="multipart/form-data" class="grid"><input type="file" name="files" multiple required><div><button type="submit">导入并局部重算</button> <button class="secondary" type="button" onclick="analyze()">重新全量分析</button></div></form>
+<p id="status" class="muted"></p>
+</section>
+<div class="grid">
+<section><h2>Pack 布局与源文件</h2><div id="sources"></div></section>
+<section><h2>Delta DAG</h2><svg id="dag" viewBox="0 0 1000 340"></svg></section>
+</div>
+<div class="grid"><section><h2>对象与内容预览</h2><div id="objects"></div></section><section><h2>候选 OID 与冲突分支</h2><div id="candidates"></div></section></div>
+</main>
+<div class="dialog" id="dialog"><div class="card"><button onclick="dialog.classList.remove('show')" class="secondary">关闭</button><div id="detail"></div></div></div>
+<script>
+let state={sources:[],objects:[],edges:[],candidates:[]};
+async function load(){state=await fetch('/api/state').then(r=>r.json());render();}
+async function analyze(){await fetch('/api/analyze',{method:'POST'}).then(r=>r.json());await load();}
+form.onsubmit=async e=>{e.preventDefault();await fetch('/api/import',{method:'POST',body:new FormData(form)});form.reset();await load();};
+function esc(x){return String(x??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function badge(x){return `<span class="badge ${esc(x)}">${esc(x)}</span>`}
+function render(){status.textContent=state.paused?'预算暂停：存在可重试的中间状态，未把部分输出当成完整对象':'分析完成';
+sources.innerHTML='<table><tr><th>ID</th><th>源</th><th>类型</th><th>状态</th><th>对象</th><th>跨源依赖</th><th></th></tr>'+state.sources.map(s=>`<tr><td>${s.id}</td><td>${esc(s.name)}</td><td>${s.kind}</td><td>${badge(s.status)}<div class="muted">${esc(s.error||'')}</div></td><td>${s.objects}</td><td>${s.dependents}</td><td><button class="secondary" onclick="deps(${s.id})">删除预览</button></td></tr>`).join('')+'</table>';
+objects.innerHTML='<table><tr><th>ID</th><th>源/偏移</th><th>类型</th><th>状态</th><th>OID / 预览</th><th>预算</th></tr>'+state.objects.map(o=>`<tr onclick="detail(${o.raw_id})"><td>${o.raw_id}</td><td>#${o.source_id} @${o.offset??'loose'}<br><span class="muted">zlib ${o.zlib_start}..${o.zlib_end}</span></td><td>${esc(o.declared_type)}<br>${esc(o.resolved_type||'')}</td><td>${badge(o.state)}<div>${esc(o.error||'')}</div><div class="muted">${(o.blocked_chain||[]).join(' → ')}</div></td><td class="muted">${esc(o.oid||'')}<br>${esc(o.preview).slice(0,160)}</td><td>${o.depth} / ${o.expanded_bytes}</td></tr>`).join('')+'</table>';
+candidates.innerHTML='<table><tr><th>OID</th><th>候选</th><th>校验</th><th>分支</th></tr>'+state.candidates.map(c=>`<tr><td class="muted">${esc(c.oid.slice(0,12))}</td><td>raw ${c.raw_id} / ${esc(c.source)}</td><td>${c.valid?'<span class="resolved">valid</span>':'<span class="invalid">'+esc(c.mismatch||'invalid')+'</span>'}</td><td><button class="secondary" onclick="pin('${c.oid}',${c.source_id})">固定到此来源</button></td></tr>`).join('')+'</table>';drawDag();}
+function drawDag(){const ids=[...new Set(state.edges.flatMap(e=>[e.child,e.base_raw].filter(x=>x!=null)))];const pos={};ids.forEach((id,i)=>{pos[id]={x:70+(i%5)*220,y:55+Math.floor(i/5)*120}});let links=state.edges.map(e=>{if(e.base_raw==null)return '';const a=pos[e.base_raw],b=pos[e.child];return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#8b949e" marker-end="url(#arrow)"/>`}).join('');let nodes=ids.map(id=>{const o=state.objects.find(x=>x.raw_id===id)||{};const p=pos[id];return `<g onclick="detail(${id})"><circle cx="${p.x}" cy="${p.y}" r="22" class="node ${['invalid','cycle'].includes(o.state)?'badnode':''} ${o.state==='paused'?'pausednode':''}"/><text x="${p.x}" y="5" text-anchor="middle">${id}</text></g>`}).join('');dag.innerHTML=`<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="22" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#8b949e"/></marker></defs>${links}${nodes}`;}
+async function pin(oid,source){await fetch('/api/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oid,branch:'pinned',source})});load();}
+async function deps(id){const j=await fetch(`/api/sources/${id}/dependents`).then(r=>r.json());detail.innerHTML=`<h2>删除源文件前的依赖证据</h2><p>${esc(j.source)} 下仍有 ${j.still_dependent_objects.length} 个对象在影响子图中。删除后这些对象会重新标记为缺 base 或失效。</p><pre>${esc(JSON.stringify(j,null,2))}</pre>${j.confirm_required?`<button onclick="doDelete(${id})">确认删除</button>`:''}`;dialog.classList.add('show');}
+async function doDelete(id){await fetch(`/api/sources/${id}`,{method:'POST'});dialog.classList.remove('show');load();}
+async function detail(id){const j=await fetch(`/api/objects/${id}`).then(r=>r.json());detail.innerHTML=`<h2>对象 #${id} 还原证据</h2><pre>${esc(JSON.stringify(j.object,null,2))}</pre><h2>Delta 步骤</h2><pre>${esc(JSON.stringify(j.steps,null,2))}</pre>`;dialog.classList.add('show');}
+load();
+</script>
+</body>
+</html>
