@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>包链显微镜</title>
+<style>
+:root{--bg:#0f1420;--panel:#171e2e;--panel2:#1d273b;--line:#2a3550;--fg:#e6ecf8;--mut:#8fa0c0;--ok:#3ddc97;--bad:#ff6b6b;--warn:#ffd166;--acc:#6ea8fe}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:linear-gradient(180deg,#131b2c,#0f1420)}
+h1{font-size:18px;margin:0;letter-spacing:2px}
+.badge{padding:2px 8px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
+.b-ok{color:var(--ok);border-color:#235c49}
+.b-bad{color:var(--bad);border-color:#6b2f36}
+.b-warn{color:var(--warn);border-color:#6b5b2f}
+.b-mut{color:var(--mut)}
+main{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:12px;padding:12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.panel>h2{font-size:13px;margin:0;padding:9px 12px;background:var(--panel2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.panel .body{padding:10px 12px;max-height:62vh;overflow:auto}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button,input::file-selector-button{background:#233456;color:var(--fg);border:1px solid #34486f;border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{background:#2d4straight2}
+button:hover{background:#2d4268}
+button.danger{background:#5c2b32;border-color:#7a3a44}
+button.mini{padding:2px 7px;font-size:12px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{text-align:left;padding:4px 7px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--panel)}
+td.oid{color:var(--acc)}
+.status-resolved{color:var(--ok)}
+.status-blocked{color:var(--warn)}
+.status-error{color:var(--bad)}
+.status-paused{color:var(--warn)}
+.status-pending{color:var(--mut)}
+.pick{cursor:pointer}
+.pick:hover{background:#202c44}
+.full{grid-column:1/-1}
+pre{background:#0b1020;border:1px solid var(--line);border-radius:8px;padding:9px;overflow:auto;max-height:260px;white-space:pre-wrap;word-break:break-all}
+.chip{display:inline-block;padding:1px 7px;border-radius:9px;margin:1px 3px 1px 0;font-size:11px;border:1px solid var(--line)}
+.chain{margin:0;padding-left:0;list-style:none}
+.chain li{padding:3px 0;border-bottom:1px dashed var(--line)}
+.ev-error{color:var(--bad)}.ev-warning{color:var(--warn)}.ev-info{color:var(--mut)}
+.packbar{display:flex;height:26px;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:8px 0}
+.seg{border-right:1px solid rgba(0,0,0,.4)}
+.legend{color:var(--mut);font-size:11px}
+svg .edge{stroke:#5a7199;stroke-width:1.4;fill:none;marker-end:url(#arrow)}
+svg .node{fill:var(--panel2);stroke:var(--line);stroke-width:1}
+svg text{fill:var(--fg);font-size:10px}
+svg .n-resolved{stroke:#2c7a5c} svg .n-error{stroke:#7a3a44} svg .n-blocked{stroke:#7a652c} svg .n-paused{stroke:#7a652c}
+.small{font-size:11px;color:var(--mut)}
+a{color:var(--acc)}
+input[type=number]{width:90px;background:#0b1020;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:4px}
+.pinnedtag{color:var(--warn);font-weight:700}
+</style></head><body>
+<header>
+  <h1>包链显微镜</h1>
+  <div class="row">
+    <form id="form" enctype="multipart/form-data" class="row">
+      <input type="file" id="files" name="files" multiple />
+      <button type="submit">导入 pack / idx / loose</button>
+    </form>
+    <button id="resume">重试暂停对象</button>
+  </div>
+  <div class="row" id="counts"></div>
+  <div class="small" id="budget"></div>
+</header>
+<main>
+  <section class="panel" id="packsPanel"><h2>Pack 布局 / 校验</h2><div class="body" id="packs"><div class="small">尚未导入。</div></div></section>
+  <section class="panel"><h2>Delta DAG</h2><div class="body" id="dag"><div class="small">导入后显示。</div></div></section>
+  <section class="panel"><h2>对象列表 <span class="small">(点击查看；同 oid 多候选在详情中固定)</span></h2><div class="body" id="nodes"></div></section>
+  <section class="panel"><h2>对象详情 / 内容预览 / 证据</h2><div class="body" id="detail"><div class="small">点击左侧对象。</div></div></section>
+  <section class="panel full"><h2>已导入源文件 <span class="small">删除前检查依赖</span></h2><div class="body" id="sources"></div></section>
+  <section class="panel full"><h2>资源预算</h2><div class="body" id="budgetPanel"></div></section>
+</main>
+<div id="toast" class="small" style="position:fixed;bottom:14px;right:14px;display:none;background:#202c44;border:1px solid var(--line);padding:8px 12px;border-radius:8px"></div>
+<script>
+let SNAP=null, SELECTED=null;
+const $=s=>document.querySelector(s);
+function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',3500)}
+async function load(){ const r=await fetch('/api/snapshot'); SNAP=await r.json(); render(); }
+function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function badge(s){return `<span class="badge b-${s==='resolved'?'ok':s==='error'?'bad':'warn'} status-${s}">${s}</span>`}
+function render(){
+  const c=SNAP.counts;
+  $('#counts').innerHTML=`<span class="badge b-mut">总数 ${c.total}</span>
+    <span class="badge b-ok">resolved ${c.resolved}</span>
+    <span class="badge b-warn">blocked ${c.blocked}</span>
+    <span class="badge b-warn">paused ${c.paused}</span>
+    <span class="badge b-bad">error ${c.error}</span>
+    <span class="badge b-mut">pending ${c.pending}</span>`;
+  const b=SNAP.budget;
+  $('#budget').textContent=`深度上限 ${b.max_depth} · 总展开 ${b.used_total_bytes}/${b.total_bytes} B · 单对象上限 ${b.single_bytes} B (${b.single_ratio}%)`;
+  renderPacks(); renderDag(); renderNodes(); renderSources(); renderBudget(); if(SELECTED!=null) renderDetail(SELECTED);
+}
+function renderPacks(){
+  if(!SNAP.packs.length){$('#packs').innerHTML='<div class="small">尚未导入。</div>';return}
+  $('#packs').innerHTML=SNAP.packs.map(p=>{
+    const nodes=SNAP.nodes.filter(n=>n.pack_id===p.pack_id);
+    const total=Math.max(1,...nodes.map(n=>n.entry_end||0));
+    const segs=nodes.map(n=>{
+      const left=((n.pack_offset||0)/total*100).toFixed(3);
+      const w=Math.max(0.4,(((n.entry_end||0)-(n.pack_offset||0))/total*100));
+      const col={resolved:'#2f8f6b',error:'#a4474f',blocked:'#a08438',paused:'#a08438',pending:'#46567a'}[n.status];
+      return `<div class="seg" title="#${n.id} ${n.kind} @${n.pack_offset} ${n.status}" style="margin-left:${left}%;width:${w}%;background:${col}"></div>`;
+    }).join('');
+    const fan=(p.fanout||[]).map(f=>`<span class="chip mono">${f.prefix}:${f.cumulative}</span>`).join('');
+    return `<div style="margin-bottom:16px">
+      <div><b class="mono">${esc(p.filename)}</b> ${p.matched?'<span class="badge b-ok">idx 配套</span>':'<span class="badge b-warn">无配套 idx</span>'}
+        ${p.checksum_ok?'<span class="badge b-ok">pack SHA1 OK</span>':'<span class="badge b-bad">pack SHA1 不符</span>'}
+        ${p.idx_filename?`idx <span class="mono">${esc(p.idx_filename)}</span> ${p.idx_checksum_ok?'<span class="badge b-ok">idx SHA1 OK</span>':'<span class="badge b-bad">idx SHA1 不符</span>'}`:''}</div>
+      <div class="small">v${p.version} · 对象数 ${p.object_count} · trailer <span class="mono">${p.trailer_oid.slice(0,12)}</span> · body sha1 <span class="mono">${p.computed_checksum.slice(0,12)}</span></div>
+      ${p.mismatch_note?`<div class="ev-warning small">${esc(p.mismatch_note)}</div>`:''}
+      <div class="packbar">${segs}</div>
+      <div class="legend">颜色：resolved/error/blocked/paused/pending；悬停看偏移。</div>
+      <div style="margin-top:6px"><div class="small">index fanout（变化的前缀）</div><div>${fan||'<span class="small">无 idx</span>'}</div></div>
+    </div>`;
+  }).join('');
+}
+function renderNodes(){
+  const rows=SNAP.nodes.map(n=>`<tr class="pick" data-id="${n.id}">
+    <td>${n.id}</td>
+    <td class="oid mono">${n.oid?esc(n.short_oid):'—'}</td>
+    <td>${esc(n.final_kind||n.kind)}</td>
+    <td>${badge(n.status)}</td>
+    <td class="mono">${esc(n.source_filename)}</td>
+    <td class="mono">${n.pack_offset??''}</td>
+    <td>${n.depth??''}</td>
+    <td>${n.candidates.length>1?`<span class="chip b-warn">候选×${n.candidates.length}</span>`:''}${n.candidates.some(c=>c.pinned)?'<span class="chip pinnedtag">已固定来源</span>':''}</td>
+  </tr>`).join('');
+  $('#nodes').innerHTML=`<table><thead><tr><th>#</th><th>oid</th><th>类型</th><th>状态</th><th>源</th><th>偏移</th><th>深度</th><th>候选</th></tr></thead><tbody>${rows}</tbody></table>`;
+  document.querySelectorAll('#nodes tr.pick').forEach(tr=>tr.onclick=()=>{SELECTED=+tr.dataset.id;renderDetail(SELECTED)});
+}
+function renderDag(){
+  if(!SNAP.nodes.length){$('#dag').innerHTML='<div class="small">导入后显示。</div>';return}
+  const W=Math.max(420,SNAP.nodes.length*70),H=240;
+  const col={resolved:'#89e0b8',error:'#ff9a9a',blocked:'#ffd166',paused:'#ffd166',pending:'#9fb2d6'};
+  const pos={};
+  SNAP.nodes.forEach((n,i)=>pos[n.id]={x:40+i*70,y:n.kind.includes('delta')?150:60});
+  const edges=SNAP.edges.map(e=>{
+    const a=pos[e.from_node], b=e.to_node?pos[e.to_node]:{x:a.x+30,y:215};
+    return `<path class="edge" d="M${a.x},${a.y} C${a.x},${a.y+40} ${b.x},${b.y-40} ${b.x},${b.y}"/>`
+      +(e.to_node?'':`<text x="${b.x-24}" y="${b.y+12}" fill="#ffd166">缺 ${esc(e.to_oid.slice(0,7))}</text>`);
+  }).join('');
+  const nodes=SNAP.nodes.map(n=>`<g class="pick" data-id="${n.id}"><rect class="node n-${n.status}" x="${pos[n.id].x-26}" y="${pos[n.id].y-14}" width="52" height="26" rx="6"/>
+    <text x="${pos[n.id].x-22}" y="${pos[n.id].y+3}">#${n.id} ${n.kind.includes('delta')?(n.kind==='ofs-delta'?'of':'rf'):(n.final_kind||n.kind).slice(0,3)}</text></g>`).join('');
+  $('#dag').innerHTML=`<svg width="${W}" height="${H}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#5a7199"/></marker></defs>${edges}${nodes}</svg>
+  <div class="legend">上行 base 对象，下行 delta；缺 base 会标注缺失 oid。</div>`;
+  document.querySelectorAll('#dag g.pick').forEach(g=>g.onclick=()=>{SELECTED=+g.dataset.id;renderDetail(SELECTED)});
+}
+function renderDetail(id){
+  const n=SNAP.nodes.find(x=>x.id===id); if(!n){$('#detail').innerHTML='<div class="small">无此对象。</div>';return}
+  const crc=n.crc_ok===null||n.crc_ok===undefined?'':(n.crc_ok?'<span class="badge b-ok">CRC OK</span>':'<span class="badge b-bad">CRC BAD</span>');
+  const preview=n.resolved_preview?(n.resolved_preview.kind==='text'
+    ?`<pre>${esc(n.resolved_preview.text)}</pre>`
+    :`<pre class="mono">${esc(n.resolved_preview.hex)}…</pre>`):'<div class="small">无已还原内容。</div>';
+  const cand=n.candidates.length?`<table><thead><tr><th>来源</th><th>偏移</th><th>状态</th><th></th></tr></thead><tbody>${
+    n.candidates.map(c=>`<tr><td class="mono">${esc(c.source_filename)}</td><td>${c.pack_offset??''}</td><td>${badge(c.status)}</td>
+      <td>${c.pinned?'<span class="pinnedtag">固定中</span>':`<button class="mini" onclick="pinNode(${c.node_id})">固定此来源形成分析分支</button>`}</td></tr>`).join('')}</tbody></table>`:'';
+  const steps=n.steps.length?`<table><thead><tr><th>#</th><th>base</th><th>指令范围</th><th>校验</th><th>范围明细</th></tr></thead><tbody>${
+    n.steps.map(s=>`<tr><td>${s.seq}</td><td class="mono">${s.base_oid?esc(s.base_oid.slice(0,12)):'—'}</td>
+      <td class="mono">[${s.instr_start}, ${s.instr_end})</td><td>${s.check_ok?'<span class="status-resolved">ok</span>':'<span class="status-error">fail</span>'}</td>
+      <td class="small mono">${esc(s.note)}</td></tr>`).join('')}</tbody></table>`:'';
+  const chain=n.blocking_chain.length?`<ul class="chain">${n.blocking_chain.map(l=>`<li>#${l.node_id} ${badge(l.status)} <span class="mono">${esc(l.oid)}</span> ${esc(l.kind)}${l.missing_oid?` → <b class="ev-warning">缺失 base ${esc(l.missing_oid)}</b>`:''}</li>`).join('')}</ul>`:'';
+  const ev=n.evidence.length?n.evidence.map(e=>`<div class="ev-${e.level}">[${e.level}] <b>${esc(e.code)}</b> ${esc(e.message)}${e.at_offset!=null?` @offset ${e.at_offset}`:''}</div>`).join(''):'<span class="small">无。</span>';
+  $('#detail').innerHTML=`
+    <div class="row" style="margin-bottom:8px"><h3 style="margin:0">#${n.id} ${esc(n.oid||'(oid 未确定)')}</h3>${badge(n.status)} ${crc}</div>
+    <table>
+      <tr><th>类型</th><td>${esc(n.final_kind||n.kind)}${n.depth!=null?` · delta 深度 ${n.depth}`:''}</td></tr>
+      <tr><th>来源</th><td class="mono">${esc(n.source_filename)} (${n.source_kind})</td></tr>
+      <tr><th>原始偏移</th><td class="mono">pack offset ${n.pack_offset??'—'} · zlib [${n.zlib_start??'—'}, ${n.entry_end??'—'}) · 声明大小 ${n.declared_size??'—'}</td></tr>
+      <tr><th>base</th><td class="mono">ofs=${n.base_offset??'—'} ref=${esc(n.base_oid||'—')}</td></tr>
+      <tr><th>CRC</th><td class="mono">idx=${n.idx_crc??'—'} computed=${n.computed_crc??'—'}</td></tr>
+      <tr><th>错误</th><td>${n.error_code?`<b class="status-error">${esc(n.error_code)}</b>: ${esc(n.error_note||'')}`:'—'}</td></tr>
+      <tr><th>raw 摘要</th><td class="mono">${esc(n.raw_summary||'—')}</td></tr>
+      <tr><th>还原摘要</th><td class="mono">${esc(n.resolved_summary||'—')}</td></tr>
+      ${n.duplicate_sources.length?`<tr><th>同 oid 其他来源</th><td>${n.duplicate_sources.map(esc).join(', ')}</td></tr>`:''}
+    </table>
+    <h4>内容预览</h4>${preview}
+    ${cand?`<h4>候选来源 / 分析分支固定</h4>${cand}`:''}
+    <h4>Delta 还原步骤（base / 指令范围 / 长度 / 校验）</h4>${steps||'<div class="small">无 delta 步骤。</div>'}
+    <h4>阻塞链</h4>${chain||'<div class="small">无阻塞。</div>'}
+    <h4>错误证据</h4><div>${ev}</div>`;
+}
+async function pinNode(id){
+  const r=await fetch('/api/pin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node_id:id})});
+  const j=await r.json(); toast(`已固定 #${id}，局部重置 ${j.reset_nodes.length} 个依赖对象并重算`); await load(); SELECTED=id; renderDetail(id);
+}
+function renderSources(){
+  $('#sources').innerHTML=`<table><thead><tr><th>#</th><th>文件</th><th>类型</th><th>大小</th><th>关联</th><th></th></tr></thead><tbody>${
+  SNAP.sources.map(s=>`<tr><td>${s.id}</td><td class="mono">${esc(s.filename)}</td><td>${s.kind}</td><td>${s.size}</td>
+    <td class="mono">${s.linked_oid?esc(s.linked_oid.slice(0,12)):(s.pack_id?('pack #'+s.pack_id):'—')}</td>
+    <td><button class="mini" onclick="checkDelete(${s.id})">删除前检查</button></td></tr>`).join('')}</tbody></table>`;
+}
+async function checkDelete(id){
+  const r=await fetch('/api/sources/'+id+'/delete-check'); const j=await r.json();
+  if(j.can_delete){
+    if(confirm(`源 ${j.filename} 无依赖对象，确认删除？`)){ await fetch('/api/sources/'+id,{method:'DELETE'}); toast('已删除'); await load(); }
+  } else {
+    const list=j.dependent_objects.map(d=>`#${d.node_id} ${d.oid} [${d.status}] — ${d.relation}`).join('\n');
+    alert(`源 ${j.filename} 仍被以下对象依赖，已阻止删除：\n\n${list}\n\n如确需删除，请用强制删除（见控制台 forceDelete(${id})）。`);
+  }
+}
+async function forceDelete(id){ const r=await fetch('/api/sources/'+id+'?force=true',{method:'DELETE'}); toast('已强制删除并重算'); await load(); }
+function renderBudget(){
+  const b=SNAP.budget;
+  $('#budgetPanel').innerHTML=`<div class="row">
+    深度上限 <input type="number" id="bd" value="${b.max_depth}">
+    总展开字节 <input type="number" id="bt" value="${b.total_bytes}">
+    单对象比例(%) <input type="number" id="br" value="${b.single_ratio}">
+    <button onclick="saveBudget(false)">提高预算并重试</button>
+    <button onclick="saveBudget(true)">重置已用字节并重试</button>
+  </div><div class="small">达到上限时对象标记为 paused，保留可重试中间状态，不会输出半成品对象。</div>`;
+}
+async function saveBudget(reset){
+  const body={max_depth:+$('#bd').value,total_bytes:+$('#bt').value,single_ratio:+$('#br').value,reset_used:reset};
+  const r=await fetch('/api/budget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json(); toast(`重算：resolved +? blocked ${j.blocked} paused ${j.paused} errored ${j.errored}`); await load();
+}
+$('#form').onsubmit=async e=>{e.preventDefault();const fd=new FormData();[...$('#files').files].forEach(f=>fd.append('files',f));
+  const r=await fetch('/api/import',{method:'POST',body:fd}); const j=await r.json();
+  toast((j||[]).map(x=>`${x.filename}: ${x.message}`).join(' | ')); $('#files').value=''; await load();};
+$('#resume').onclick=async()=>{const r=await fetch('/api/resume',{method:'POST'});const j=await r.json();toast(`重试完成，paused=${j.paused}`);await load()};
+load();
+</script></body></html>
