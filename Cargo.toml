@@ -1,0 +1,24 @@
+[package]
+name = "packchain-microscope"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "packchain_microscope"
+path = "src/lib.rs"
+
+[[bin]]
+name = "packchain-microscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+flate2 = "1.0.30"
+crc32fast = "1.4.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
