@@ -1,0 +1,28 @@
+[package]
+name = "pack_microscope"
+version = "0.1.0"
+edition = "2021"
+description = "包链显微镜 — Git pack / index / loose object 取证分析器（核心解析不依赖系统 git）"
+
+[lib]
+name = "pack_microscope"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pack_microscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+flate2 = "1.1"
+crc32fast = "1.4"
+sha1 = "0.10"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
