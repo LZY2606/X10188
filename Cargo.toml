@@ -1,0 +1,21 @@
+[package]
+name = "pack-microscope"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pack_microscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+flate2 = "1.1"
+sha1 = "0.10"
+crc32fast = "1.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
