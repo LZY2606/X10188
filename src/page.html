@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>包链显微镜</title>
+<style>
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#f5f6f8;color:#1f2430}
+header{background:#10243e;color:#fff;padding:14px 22px}
+header h1{margin:0;font-size:20px}
+main{padding:18px 22px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+section{background:#fff;border:1px solid #dfe3ea;border-radius:8px;padding:14px 16px}
+section.full{grid-column:1/3}
+h2{font-size:15px;margin:0 0 10px;color:#10243e;border-bottom:1px solid #eef0f4;padding-bottom:6px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th,td{border:1px solid #e6e9ef;padding:4px 7px;text-align:left;vertical-align:top}
+th{background:#f0f3f8}
+code,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;color:#fff}
+.ok{background:#2e8b57}.blocked{background:#c8861a}.error{background:#c0392b}.paused{background:#6c5ce7}
+button{background:#10243e;color:#fff;border:0;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer}
+button.ghost{background:#6b7280}
+input,select{font-size:12px;padding:4px 6px}
+pre{background:#0d1b2a;color:#cde6ff;padding:10px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px;white-space:pre-wrap}
+.muted{color:#6b7280}
+#dag svg{width:100%;height:360px;background:#fbfcfe;border:1px solid #e6e9ef;border-radius:6px}
+.node-label{font-size:10px;fill:#10243e}
+.edge{stroke:#8a94a6;stroke-width:1.2}
+dialog{border:1px solid #bbb;border-radius:8px;width:560px}
+</style>
+</head>
+<body>
+<header><h1>包链显微镜 <span class="muted" style="color:#9fb3c8">Pack Chain Microscope</span></h1></header>
+<main>
+<section id="sec-engine">
+  <h2>引擎状态 / 预算</h2>
+  <div id="engine-status"></div>
+  <div style="margin-top:8px">
+    深度 <input id="b-depth" size="5">
+    总字节 <input id="b-bytes" size="12">
+    单对象比例 <input id="b-ratio" size="5">
+    <button onclick="runEngine()">运行 / 继续</button>
+  </div>
+</section>
+<section id="sec-import">
+  <h2>导入 (pack / index / loose, 全部存入数据目录)</h2>
+  <input type="file" id="import-file">
+  <button onclick="uploadFile()">上传文件</button>
+  <span class="muted">或按服务器本地路径:</span>
+  <input id="import-path" size="30" placeholder="/path/to/file.pack">
+  <button class="ghost" onclick="importPath()">导入路径</button>
+  <div id="import-result" class="muted" style="margin-top:6px"></div>
+</section>
+<section class="full" id="sec-sources">
+  <h2>源文件 (删除前检查依赖)</h2>
+  <table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>大小</th><th>SHA-256 摘要</th><th>依赖对象</th><th></th></tr></thead>
+  <tbody id="sources-body"></tbody></table>
+</section>
+<section class="full" id="sec-packs">
+  <h2>Pack 布局与 Index Fanout</h2>
+  <div id="packs"></div>
+</section>
+<section class="full" id="sec-dag">
+  <h2>Delta DAG</h2>
+  <div id="dag"><svg id="dag-svg"></svg></div>
+  <div class="muted" style="font-size:11px">边: base -> delta; 颜色: 绿=已还原 橙=阻塞 红=错误 紫=暂停</div>
+</section>
+<section style="grid-column:1/3" id="sec-objects">
+  <h2>对象内容预览</h2>
+  <table><thead><tr><th>OID</th><th>类型</th><th>大小</th><th>候选来源数</th><th>分支</th><th></th></tr></thead>
+  <tbody id="objects-body"></tbody></table>
+  <div id="object-detail"></div>
+</section>
+<section id="sec-blocked">
+  <h2>阻塞链 (未还原对象)</h2>
+  <table><thead><tr><th>候选</th><th>错误</th><th>阻塞点</th><th>原因</th></tr></thead>
+  <tbody id="blocked-body"></tbody></table>
+</section>
+<section id="sec-errors">
+  <h2>错误证据 (坏对象隔离)</h2>
+  <table><thead><tr><th>范围</th><th>种类</th><th>信息</th><th>证据</th></tr></thead>
+  <tbody id="errors-body"></tbody></table>
+</section>
+<section class="full" id="sec-branches">
+  <h2>分析分支 (固定冲突来源)</h2>
+  <table><thead><tr><th>ID</th><th>名称</th><th>OID</th><th>固定候选</th></tr></thead>
+  <tbody id="branches-body"></tbody></table>
+</section>
+</main>
+
+<dialog id="delete-dialog">
+  <h3 style="margin-top:0">仍有对象依赖该源文件</h3>
+  <div id="delete-deps"></div>
+  <p>强制删除会移除这些候选并重算依赖子图。确定继续?</p>
+  <button id="delete-confirm">强制删除</button>
+  <button class="ghost" onclick="document.getElementById('delete-dialog').close()">取消</button>
+</dialog>
+
+<script>
+const $=id=>document.getElementById(id);
+async function api(path,opts){const r=await fetch(path,opts);return {ok:r.ok,body:await r.json()};}
+function pill(s){return `<span class="pill ${s}">${s}</span>`}
+
+async function refresh(){
+  await loadStatus(); await loadSources(); await loadPacks();
+  await loadDag(); await loadObjects(); await loadBlocked();
+  await loadErrors(); await loadBranches();
+}
+
+async function loadStatus(){
+  const {body}=await api('/api/engine/status');
+  $('b-depth').value=body.budget.max_depth;
+  $('b-bytes').value=body.budget.max_total_bytes;
+  $('b-ratio').value=body.budget.max_object_ratio;
+  $('engine-status').innerHTML=
+    `${pill(body.status)} 运行次数 ${body.run_count}, 本次展开 ${body.expanded_bytes} 字节
+     <div class="muted">${body.message||''}</div>`;
+}
+
+async function runEngine(){
+  const budget={max_depth:+$('b-depth').value,max_total_bytes:+$('b-bytes').value,max_object_ratio:+$('b-ratio').value};
+  const {body}=await api('/api/engine/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({budget})});
+  $('import-result').textContent='引擎: '+body.state+(body.reason?(' ('+body.reason+')'):'');
+  await refresh();
+}
+
+async function uploadFile(){
+  const f=$('import-file').files[0]; if(!f) return;
+  const r=await fetch('/api/import?name='+encodeURIComponent(f.name),{method:'POST',body:await f.arrayBuffer()});
+  $('import-result').textContent=JSON.stringify(await r.json());
+  await refresh();
+}
+async function importPath(){
+  const path=$('import-path').value;
+  const {body}=await api('/api/import_path',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+  $('import-result').textContent=JSON.stringify(body);
+  await refresh();
+}
