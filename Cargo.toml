@@ -1,0 +1,29 @@
+[package]
+name = "pack-chain-microscope"
+version = "0.1.0"
+edition = "2021"
+description = "包链显微镜: Git pack/loose object forensics with delta-chain reconstruction"
+
+[lib]
+name = "pcm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pack-chain-microscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "io-util", "fs"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
+miniz_oxide = "0.7"
+sha1_smol = "1"
+crc32fast = "1"
+hex = "0.4"
+tower = "0.5"
+
+[dev-dependencies]
+tempfile = "3"
