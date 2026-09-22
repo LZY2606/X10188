@@ -1,0 +1,22 @@
+[package]
+name = "pack_microscope"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pack_microscope"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pack_microscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+sha1 = "0.10"
+flate2 = "1"
+
+[profile.dev]
+opt-level = 1
