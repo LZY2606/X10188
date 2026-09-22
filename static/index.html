@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>包链显微镜</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🔬 包链显微镜</div>
+  <div class="sub">Git pack / index / loose object 取证 · delta 链还原</div>
+</header>
+
+<main class="layout">
+  <section class="panel controls">
+    <h2>导入与分析</h2>
+    <div class="row">
+      <label class="filebtn">
+        选择 pack / index / loose 文件
+        <input id="files" type="file" multiple webkitdirectory hidden />
+      </label>
+      <label class="filebtn">
+        仅选文件
+        <input id="files-flat" type="file" multiple hidden />
+      </label>
+      <button id="btn-import">导入</button>
+      <button id="btn-analyze">全量分析</button>
+      <button id="btn-resume" class="accent">恢复(重试暂停)</button>
+    </div>
+    <div class="row budget">
+      <label>delta 深度 <input id="b-depth" type="number" value="50" min="0" /></label>
+      <label>总展开字节 <input id="b-total" type="number" value="268435456" min="0" /></label>
+      <label>单对象比例(千分) <input id="b-ratio" type="number" value="8000" min="100" /></label>
+    </div>
+    <div id="import-log" class="log"></div>
+    <div id="run-summary" class="summary"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Pack 布局与 fanout</h2>
+    <div id="layout"></div>
+  </section>
+
+  <section class="panel sources-panel">
+    <h2>源文件</h2>
+    <div id="sources" class="grid"></div>
+  </section>
+
+  <section class="panel dag-panel">
+    <h2>Delta DAG</h2>
+    <div class="legend">
+      <span class="dot resolved">resolved</span>
+      <span class="dot paused">paused</span>
+      <span class="dot missing">missing_base</span>
+      <span class="dot bad">bad</span>
+      <span class="dot depth">depth_limit</span>
+    </div>
+    <svg id="dag" width="100%" height="360"></svg>
+  </section>
+
+  <section class="panel candidates-panel">
+    <h2>对象候选</h2>
+    <table id="cand-table">
+      <thead>
+        <tr>
+          <th>id</th><th>源</th><th>类型</th><th>偏移</th><th>声明/还原</th>
+          <th>声称 oid</th><th>状态</th><th>深度</th><th>候选数</th><th>证据</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel detail-panel">
+    <h2>对象细节 / 内容预览</h2>
+    <div id="detail" class="detail-empty">点击表格中的对象查看 delta 逐步取证与内容预览。</div>
+  </section>
+</main>
+
+<div id="branch-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>固定冲突来源（分析分支）</h3>
+    <p id="branch-info"></p>
+    <input id="branch-name" placeholder="分支名称，如 branch-A" />
+    <button id="branch-save">保存分支并以此来源分析</button>
+    <button id="branch-cancel">取消</button>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
