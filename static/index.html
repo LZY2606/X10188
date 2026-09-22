@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>包链显微镜</title>
+<style>
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#0b1020;color:#e5e7eb}
+header{padding:24px 32px;background:linear-gradient(120deg,#172554,#0f766e)}
+h1{margin:0;font-size:28px} main{padding:24px;display:grid;gap:20px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:#111827;border:1px solid #263244;border-radius:12px;padding:16px;overflow:auto}
+h2{font-size:18px;margin:0 0 12px} table{border-collapse:collapse;width:100%;font-size:12px} th,td{border-bottom:1px solid #243044;padding:7px;text-align:left;vertical-align:top} th{color:#93c5fd}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.ok{color:#86efac}.bad{color:#fca5a5}.warn{color:#fcd34d}.muted{color:#94a3b8}
+button{background:#2563eb;color:white;border:0;border-radius:8px;padding:7px 10px;cursor:pointer}button.secondary{background:#334155}input[type=file]{color:#cbd5e1}.pill{display:inline-block;border-radius:999px;padding:2px 8px;background:#1e293b;margin:2px}.step{border-left:3px solid #38bdf8;padding:8px;margin:8px 0;background:#0f172a}.preview{white-space:pre-wrap;max-height:220px;overflow:auto;background:#020617;padding:10px;border-radius:8px}
+</style>
+</head>
+<body>
+<header><h1>包链显微镜</h1><div>Git pack / index / loose object delta-chain forensic workbench</div></header>
+<main>
+<section class="card">
+<form id="upload"><input type="file" name="file" required><button>导入文件</button></form>
+<div style="margin-top:12px"><button class="secondary" onclick="refresh()">刷新</button> <span id="run" class="mono"></span></div>
+</section>
+<section class="grid">
+<div class="card"><h2>Pack 布局与源文件</h2><div id="sources"></div></div>
+<div class="card"><h2>Delta DAG</h2><div id="dag"></div></div>
+</section>
+<section class="card"><h2>对象候选、内容预览与错误证据</h2><div id="objects"></div></section>
+</main>
+<script>
+let model={sources:[],candidates:[]};
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+async function refresh(){model=await fetch('/api/dashboard').then(r=>r.json());render()}
+function render(){document.querySelector('#run').textContent=`run=${model.run.state} used=${model.run.used_bytes} queue=${model.run.queue_len}`;
+ document.querySelector('#sources').innerHTML='<table><tr><th>ID</th><th>类型</th><th>文件</th><th>大小</th><th>摘要/证据</th><th>依赖</th></tr>'+model.sources.map(s=>`<tr><td>${s.id}</td><td>${s.kind}</td><td class="mono">${esc(s.original_name)}</td><td>${s.size}</td><td><pre>${esc(JSON.stringify(s.summary,null,2))}\n${esc(JSON.stringify(s.errors,null,2))}</pre></td><td>${s.dependent_objects.map(esc).join('<br>')}<br><button class="secondary" onclick="del(${s.id})">删除前检查</button></td></tr>`).join('')+'</table>';
+ document.querySelector('#dag').innerHTML=model.candidates.map(c=>{let deps=c.steps.map(s=>`#${s.base_candidate_id}`).concat(c.blockers.map(b=>`blocked by #${b.base_candidate_id??'?'}`));return `<div class="step">#${c.id} <b>${esc(c.object_type)}</b> → ${deps.join(' → ')||'root'}</div>`}).join('');
+ document.querySelector('#objects').innerHTML='<table><tr><th>ID</th><th>OID / 来源 / 偏移</th><th>状态</th><th>还原与 delta 指令</th><th>预览 / 证据</th></tr>'+model.candidates.map(c=>{let r=c.resolution;return `<tr><td>${c.id}<br><button class="secondary" onclick="pin(${c.id})">固定为分支来源</button></td><td class="mono">${esc(c.actual_oid||c.claimed_oid||'(无 OID)')}<br>source=${c.source_id} ${c.kind} off=${c.pack_offset??'-'}<br>base=${esc(c.base_claim||c.base_offset||'')}</td><td class="${r?.state==='ready'?'ok':r?.state==='failed'?'bad':'warn'}">${esc(r?.state||c.status)}<br>${esc(c.integrity)}</td><td>${c.steps.map(s=>`<div>step ${s.position}: base #${s.base_candidate_id} bytes[${s.instruction_start}..${s.instruction_end}] in=${s.input_len} out=${s.output_len} <b class="ok">${s.check_ok}</b><br><span class="muted">${esc(JSON.stringify(s.details))}</span></div>`).join('')}${c.blockers.map(b=>`<div class="bad">${b.kind}: ${esc(b.reason)} chain=${esc(JSON.stringify(b.chain))}</div>`).join('')}</td><td><div class="preview">${esc(r?.preview)}</div><pre>${esc(c.error||'')}\n${esc(JSON.stringify(c.evidence,null,2))}</pre></td></tr>`}).join('')+'</table>'}
+async function del(id){let r=await fetch(`/api/sources/${id}/delete`,{method:'POST'}).then(r=>r.json());alert(r.deleted?'已删除':'仍有依赖：\n'+r.dependents.join('\n'));refresh()}
+async function pin(id){await fetch(`/api/candidates/${id}/pin`,{method:'POST'});refresh()}
+document.querySelector('#upload').onsubmit=async e=>{e.preventDefault();let fd=new FormData(this);await fetch('/api/import',{method:'POST',body:fd});refresh();this.reset()};
+refresh();
+</script>
+</body></html>
