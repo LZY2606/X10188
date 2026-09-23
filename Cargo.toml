@@ -1,0 +1,17 @@
+[package]
+name = "pack-microscope"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+flate2 = "1.1"
+sha1 = "0.10"
+crc32fast = "1.5"
+hex = "0.4"
+tempfile = "3"
+
+[profile.dev]
+opt-level = 0
