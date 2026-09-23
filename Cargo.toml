@@ -1,0 +1,18 @@
+[package]
+name = "packchain-microscope"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha1 = "0.10"
+sha2 = "0.10"
+flate2 = "1"
+crc32fast = "1"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
