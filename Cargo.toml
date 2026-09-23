@@ -1,0 +1,25 @@
+[package]
+name = "pack-chain-microscope"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "pack_chain_microscope"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pack-chain-microscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7.9", features = ["multipart"] }
+flate2 = "1.0.35"
+hex = "0.4.3"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+sha1 = "0.10.6"
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "net"] }
+
+[profile.dev]
+panic = "unwind"

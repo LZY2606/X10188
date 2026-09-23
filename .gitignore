@@ -26,6 +26,7 @@ Pods/
 .env
 .env.*
 *.log
+data/
 coverage/
 .coverage
 .nyc_output/
