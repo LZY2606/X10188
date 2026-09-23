@@ -1,0 +1,29 @@
+[package]
+name = "packmicro"
+version = "0.1.0"
+edition = "2021"
+description = "包链显微镜: Git pack/index/loose object forensics (from-scratch parser)"
+
+[lib]
+name = "packmicro"
+path = "src/lib.rs"
+
+[[bin]]
+name = "packmicro"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
+rusqlite = { version = "0.37", features = ["column_decltype"] }
+flate2 = { version = "1.1", default-features = false, features = ["std", "miniz_oxide"] }
+sha1 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+http-body-util = "0.1"
+bytes = "1"
