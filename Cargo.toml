@@ -1,0 +1,19 @@
+[package]
+name = "packscope"
+version = "0.1.0"
+edition = "2021"
+description = "包链显微镜 - Git pack/index/loose object forensic analyzer"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart", "query"] }
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+sha1 = "0.10"
+flate2 = "1"
+crc32fast = "1"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
