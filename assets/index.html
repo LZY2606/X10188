@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>包链显微镜</title>
+<style>
+:root {
+  --bg:#0f1420; --panel:#171e2e; --panel2:#1e2740; --line:#2b3650;
+  --text:#e7ecf5; --muted:#93a0b8; --accent:#5ec8f2; --ok:#4ade80;
+  --warn:#fbbf24; --err:#f87171; --pause:#c084fc;
+}
+* { box-sizing:border-box; }
+body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft Yahei",monospace;
+       background:var(--bg); color:var(--text); font-size:13px; }
+header { padding:14px 20px; background:linear-gradient(90deg,#10182b,#16233f);
+         border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
+header h1 { font-size:18px; margin:0; color:var(--accent); letter-spacing:2px;}
+.chip { background:var(--panel2); border:1px solid var(--line); border-radius:999px;
+        padding:3px 10px; color:var(--muted); }
+.chip b { color:var(--text); }
+main { display:grid; grid-template-columns: 300px 1fr 360px; gap:12px; padding:12px; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto;}
+.panel h2 { font-size:13px; margin:0 0 10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;}
+.row { display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;}
+button, input[type=file]::file-selector-button {
+  background:var(--panel2); color:var(--text); border:1px solid var(--line);
+  border-radius:6px; padding:6px 10px; cursor:pointer; font-size:12px;}
+button:hover { border-color:var(--accent); color:var(--accent);}
+input[type=text], input[type=number], select {
+  background:var(--bg); border:1px solid var(--line); color:var(--text);
+  border-radius:6px; padding:5px 8px; font-size:12px;}
+table { width:100%; border-collapse:collapse; font-size:12px;}
+th,td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top;}
+th { color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--panel);}
+tr.obj { cursor:pointer;}
+tr.obj:hover { background:var(--panel2);}
+.status { font-weight:700; }
+.s-resolved { color:var(--ok);} .s-error { color:var(--err);}
+.s-missing_base { color:var(--warn);} .s-paused_budget { color:var(--pause);}
+.s-cycle { color:#fb7185;}
+.muted { color:var(--muted);}
+pre { background:var(--bg); border:1px solid var(--line); border-radius:6px;
+      padding:8px; max-height:260px; overflow:auto; white-space:pre-wrap; word-break:break-all;}
+.tag { display:inline-block; padding:1px 6px; border-radius:4px; font-size:11px; border:1px solid var(--line);}
+.ev-error { color:var(--err);} .ev-warning{ color:var(--warn);}
+.bar { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; border:1px solid var(--line);}
+.bar > div { height:100%; background:var(--accent);}
+.layout-entry { display:flex; align-items:center; gap:8px; padding:3px 0; border-bottom:1px dashed var(--line); cursor:pointer;}
+.layout-entry:hover { background:var(--panel2);}
+.swatch { width:14px; height:14px; border-radius:3px; flex:none;}
+.dag-wrap { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:6px; overflow:auto;}
+svg text { fill:var(--muted); font-size:10px;}
+.scroll { max-height:40vh; overflow:auto;}
+.tabs { display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;}
+.tabs button.active { border-color:var(--accent); color:var(--accent);}
+.candidate { display:flex; justify-content:space-between; gap:6px; padding:4px 6px;
+             border:1px solid var(--line); border-radius:6px; margin-bottom:4px; align-items:center;}
+.step { border-left:3px solid var(--accent); padding:6px 8px; margin-bottom:6px; background:var(--bg); border-radius:0 6px 6px 0;}
+.badge { padding:1px 5px; border-radius:4px; background:var(--panel2); border:1px solid var(--line); font-size:11px;}
+@media (max-width:1200px){ main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔬 包链显微镜</h1>
+  <span class="chip">resolved <b id="c-resolved">0</b></span>
+  <span class="chip">missing base <b id="c-missing">0</b></span>
+  <span class="chip">error <b id="c-error">0</b></span>
+  <span class="chip">paused <b id="c-paused">0</b></span>
+  <span class="chip">cycle <b id="c-cycle">0</b></span>
+  <span class="chip" id="budget-chip"></span>
+</header>
+<main>
+  <section class="panel" id="left">
+    <h2>导入 / 源文件</h2>
+    <div class="row"><input type="file" id="files" multiple></div>
+    <div class="row"><button id="upload">导入选中文件</button>
+      <button id="refresh">刷新</button></div>
+    <div id="upload-msg" class="muted"></div>
+    <h2 style="margin-top:14px">预算</h2>
+    <div class="row">max depth <input type="number" id="b-depth" style="width:80px"></div>
+    <div class="row">total bytes <input type="number" id="b-total" style="width:130px"></div>
+    <div class="row">single ratio <input type="number" id="b-ratio" step="0.05" style="width:80px"></div>
+    <div class="row"><button id="b-save">保存预算</button>
+      <button id="b-reset">清零用量</button>
+      <button id="retry">重试解析</button></div>
+    <div class="bar" style="margin-top:6px"><div id="b-bar" style="width:0%"></div></div>
+    <div class="muted" id="b-label"></div>
+    <h2 style="margin-top:14px">源文件</h2>
+    <div class="scroll" id="sources"></div>
+    <h2 style="margin-top:14px">错误证据</h2>
+    <div class="scroll" id="evidence"></div>
+  </section>
+
+  <section class="panel" id="center">
+    <div class="tabs">
+      <button data-tab="dag" class="active">Delta DAG</button>
+      <button data-tab="layout">Pack 布局</button>
+      <button data-tab="objects">对象列表</button>
+    </div>
+    <div id="tab-dag"><div class="dag-wrap"><svg id="dag" width="100%" height="420"></svg></div>
+      <div class="muted" style="margin-top:6px">绿=已还原；黄=缺 base；红=错误；紫=预算暂停；粉=环。点击节点查看详情。</div>
+    </div>
+    <div id="tab-layout" style="display:none">
+      <div class="row">
+        <select id="pack-select"></select>
+      </div>
+      <div id="fanout" class="muted"></div>
+      <div class="scroll" id="layout" style="max-height:60vh"></div>
+    </div>
+    <div id="tab-objects" style="display:none">
+      <input type="text" id="filter" placeholder="过滤 oid / 状态 / 类型" style="width:100%;margin-bottom:6px">
+      <div class="scroll" style="max-height:60vh"><table id="obj-table">
+        <thead><tr><th>oid</th><th>状态</th><th>类型</th><th>大小</th><th>深度</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="panel" id="right">
+    <h2>对象详情</h2>
+    <div id="detail" class="muted">点击左侧对象或 DAG 节点查看。</div>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
