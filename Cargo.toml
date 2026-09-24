@@ -1,0 +1,20 @@
+[package]
+name = "packchain-microscope"
+version = "0.1.0"
+edition = "2021"
+description = "包链显微镜 — Git pack/idx/loose object 取证分析器"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+flate2 = "1"
+crc32fast = "1"
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
