@@ -1,0 +1,20 @@
+[package]
+name = "packscope"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+flate2 = "1.1"
+hex = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tower-browser = "0.6"
+
+[dev-dependencies]
+tempfile = "3"
