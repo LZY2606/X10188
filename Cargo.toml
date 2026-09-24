@@ -1,0 +1,26 @@
+[package]
+name = "packchain-microscope"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+flate2 = "1"
+sha1_smol = "1"
+crc32fast = "1"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[[bin]]
+name = "packchain-microscope"
+path = "src/main.rs"
+
+[profile.test]
+opt-level = 1
