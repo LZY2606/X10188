@@ -1,0 +1,27 @@
+[package]
+name = "packscope"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "packscope"
+path = "src/lib.rs"
+
+[[bin]]
+name = "packscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+flate2 = { version = "0.3", default-features = false, features = ["miniz_oxide"] }
+sha1 = "0.10"
+crc32fast = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+
+[dev-dependencies]
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
