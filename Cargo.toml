@@ -1,0 +1,30 @@
+[package]
+name = "packscope"
+version = "0.1.0"
+edition = "2021"
+description = "包链显微镜: forensic microscope for Git pack/index/loose objects and delta chains"
+
+[lib]
+name = "packscope"
+path = "src/lib.rs"
+
+[[bin]]
+name = "packscope"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+flate2 = "1.1"
+sha1 = "0.11"
+sha2 = "0.11"
+crc32fast = "1.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mime_guess = "2"
+
+[dev-dependencies]
+tempfile = "3"
